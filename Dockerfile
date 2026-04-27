@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     python3-dev \
     pipx \
+    gosu \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -46,7 +47,8 @@ RUN ARCH=$(dpkg --print-architecture) \
     && rm "git-delta_0.18.2_${ARCH}.deb"
 
 # Install just
-COPY --from=ghcr.io/casey/just:latest /just /usr/local/bin/just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+    | bash -s -- --to /usr/local/bin
 
 # Set up non-root user and directories
 # Ubuntu 24.04 ships with a default 'ubuntu' user/group at UID/GID 1000;
@@ -63,9 +65,9 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 USER $USERNAME
 WORKDIR /workspace
 
-# Set git config
-RUN git config --global user.email "JakeHartnell@users.noreply.github.com" \
-    && git config --global user.name "Jake Hartnell"
+# Git identity is set at runtime via GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL,
+# GIT_COMMITTER_NAME, and GIT_COMMITTER_EMAIL environment variables
+# passed by safe-claude.sh from the host's git config.
 
 # Environment setup
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
@@ -115,3 +117,10 @@ ENV CLAUDE_CONFIG_DIR=/home/node/.claude
 RUN npx get-shit-done-cc@latest --claude --global
 
 VOLUME /commandhistory
+
+# Entrypoint runs as root to mirror the host's home path inside the container
+# (so absolute paths in shared ~/.claude config resolve), then drops to node.
+USER root
+COPY entrypoint.sh /usr/local/bin/safe-claude-entrypoint.sh
+RUN chmod +x /usr/local/bin/safe-claude-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/safe-claude-entrypoint.sh"]

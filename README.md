@@ -48,6 +48,16 @@ Claude opens with your current directory mounted as `/workspace` inside the cont
 | `--mount SRC[:DEST]` | Mount an extra host path into the container. If `DEST` is omitted, `SRC` is used as the destination path. May be repeated. |
 | `--help` | Show usage |
 
+### Git identity
+
+SafeClaude automatically reads your host's `git config --global user.name` and `user.email` and forwards them into the container so commits have the correct author. No manual setup needed — if your host git is configured, the container inherits it.
+
+To override for a single run, set the standard Git environment variables:
+
+```bash
+GIT_AUTHOR_NAME="Other Name" GIT_AUTHOR_EMAIL="other@example.com" safe-claude
+```
+
 ---
 
 ## What's sandboxed
@@ -125,6 +135,19 @@ Different projects need different toolchains — the Dockerfile is yours to exte
 ```bash
 docker build --build-arg CLAUDE_VERSION=1.2.3 -t safe-claude:latest ~/safe-claude
 ```
+
+### Included tools
+
+The default image ships with a broad set of tools:
+
+- **Node.js 22** and npm
+- **Python 3** with pip, venv, and pipx
+- **Rust** with wasm targets, `wasm-tools`, `cargo-component`, `wit-bindgen-cli`
+- **Foundry** (forge, cast, anvil, chisel)
+- **[just](https://github.com/casey/just)** — command runner
+- **[qmd](https://github.com/tobi/qmd)** — local search engine for docs and notes
+- **[GSD](https://github.com/gsd-build/get-shit-done)** — spec-driven development system for Claude Code
+- **General:** git, gh, ripgrep, fd, fzf, jq, delta, zsh
 
 ---
 

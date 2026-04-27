@@ -94,6 +94,18 @@ if $REBUILD || ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
     docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 fi
 
+# Forward git identity into the container.
+# Explicit env vars (GIT_AUTHOR_NAME, etc.) take precedence over host git config.
+GIT_USER_NAME="${GIT_AUTHOR_NAME:-${GIT_COMMITTER_NAME:-$(git config --global user.name 2>/dev/null || true)}}"
+GIT_USER_EMAIL="${GIT_AUTHOR_EMAIL:-${GIT_COMMITTER_EMAIL:-$(git config --global user.email 2>/dev/null || true)}}"
+GIT_ENV_FLAGS=()
+if [[ -n "$GIT_USER_NAME" ]]; then
+    GIT_ENV_FLAGS+=(-e "GIT_AUTHOR_NAME=$GIT_USER_NAME" -e "GIT_COMMITTER_NAME=$GIT_USER_NAME")
+fi
+if [[ -n "$GIT_USER_EMAIL" ]]; then
+    GIT_ENV_FLAGS+=(-e "GIT_AUTHOR_EMAIL=$GIT_USER_EMAIL" -e "GIT_COMMITTER_EMAIL=$GIT_USER_EMAIL")
+fi
+
 # Ensure host-side credential targets exist so Docker bind-mounts them as
 # files/dirs rather than creating empty directories in their place.
 mkdir -p "$HOME/.claude"
@@ -117,6 +129,8 @@ docker run --rm -it \
     -v "$HOME/.claude:/home/node/.claude" \
     -v "$CLAUDE_JSON_TMP:/home/node/.claude.json" \
     "${EXTRA_MOUNT_FLAGS[@]+"${EXTRA_MOUNT_FLAGS[@]}"}" \
+    "${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"}" \
+    -e "HOST_HOME=$HOME" \
     -w /workspace \
     "$IMAGE_NAME" \
     claude --dangerously-skip-permissions
