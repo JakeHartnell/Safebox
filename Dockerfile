@@ -60,7 +60,7 @@ RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
 # Install Go (pinned). Required for Cosmos SDK / Juno chain (`make build`,
 # `make proto-gen`, `make ictest-*`), polytone simtests, and the
 # osmosis-test-tube build script used by `cargo test --features test-tube`.
-ARG GO_VERSION=1.22.10
+ARG GO_VERSION=1.25.2
 RUN ARCH=$(dpkg --print-architecture) \
     && wget -q "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -O /tmp/go.tar.gz \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
@@ -90,9 +90,9 @@ RUN curl -sSL "https://github.com/bufbuild/buf/releases/latest/download/buf-$(un
     && chmod +x /usr/local/bin/buf
 
 # Install libwasmvm (CosmWasm VM shared library) — required by
-# `cargo test --features test-tube` in dao-contracts. Pin matches what the
-# dao-contracts CI workflow checks out.
-ARG WASMVM_VERSION=v1.5.2
+# `cargo test --features test-tube` in dao-contracts and by the cgo-linked
+# Juno chain (Path B target: wasmvm v3.x).
+ARG WASMVM_VERSION=v3.0.4
 RUN ARCH=$(dpkg --print-architecture); [ "$ARCH" = "amd64" ] && WASMARCH=x86_64 || WASMARCH=aarch64; \
     wget -q "https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm.${WASMARCH}.so" -O "/usr/lib/libwasmvm.${WASMARCH}.so" \
     && ldconfig

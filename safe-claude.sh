@@ -132,6 +132,11 @@ fi
 mkdir -p "$HOME/.claude"
 touch "$HOME/.claude.json"
 
+# Persist qmd's cache (GGUF model weights + SQLite index — multi-GB) across
+# container rebuilds. Without this, every fresh container re-downloads the
+# embedding/reranker/expander models and re-embeds every collection.
+mkdir -p "$HOME/.cache/qmd"
+
 # Copy .claude.json to a temp file so the container never writes directly to
 # the host file (Docker's macOS filesystem layer can corrupt atomic renames).
 CLAUDE_JSON_TMP=$(mktemp /tmp/claude-json-XXXXXX)
@@ -149,6 +154,7 @@ docker run --rm -it \
     -v "$PWD:/workspace" \
     -v "$HOME/.claude:/home/node/.claude" \
     -v "$CLAUDE_JSON_TMP:/home/node/.claude.json" \
+    -v "$HOME/.cache/qmd:/home/node/.cache/qmd" \
     "${EXTRA_MOUNT_FLAGS[@]+"${EXTRA_MOUNT_FLAGS[@]}"}" \
     "${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"}" \
     "${DOCKER_FLAGS[@]+"${DOCKER_FLAGS[@]}"}" \
