@@ -106,6 +106,27 @@ if [[ -n "$GIT_USER_EMAIL" ]]; then
     GIT_ENV_FLAGS+=(-e "GIT_AUTHOR_EMAIL=$GIT_USER_EMAIL" -e "GIT_COMMITTER_EMAIL=$GIT_USER_EMAIL")
 fi
 
+# Forward a GitHub token if one is set on the host. `gh` reads GH_TOKEN /
+# GITHUB_TOKEN automatically; the entrypoint also wires `git` credential
+# helper so HTTPS pushes work from inside the container.
+if [[ -n "${GH_TOKEN:-}" ]]; then
+    GIT_ENV_FLAGS+=(-e "GH_TOKEN=$GH_TOKEN")
+fi
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    GIT_ENV_FLAGS+=(-e "GITHUB_TOKEN=$GITHUB_TOKEN")
+fi
+if [[ -n "${GH_USER:-}" ]]; then
+    GIT_ENV_FLAGS+=(-e "GH_USER=$GH_USER")
+fi
+
+# Mount the host docker socket if available, so docker CLI inside the
+# container drives the host daemon (needed for cosmwasm/optimizer,
+# interchaintest, and the dao-contracts `just deploy-local` flow).
+DOCKER_FLAGS=()
+if [[ -S /var/run/docker.sock ]]; then
+    DOCKER_FLAGS+=(-v /var/run/docker.sock:/var/run/docker.sock)
+fi
+
 # Ensure host-side credential targets exist so Docker bind-mounts them as
 # files/dirs rather than creating empty directories in their place.
 mkdir -p "$HOME/.claude"
@@ -130,6 +151,7 @@ docker run --rm -it \
     -v "$CLAUDE_JSON_TMP:/home/node/.claude.json" \
     "${EXTRA_MOUNT_FLAGS[@]+"${EXTRA_MOUNT_FLAGS[@]}"}" \
     "${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"}" \
+    "${DOCKER_FLAGS[@]+"${DOCKER_FLAGS[@]}"}" \
     -e "HOST_HOME=$HOME" \
     -w /workspace \
     "$IMAGE_NAME" \

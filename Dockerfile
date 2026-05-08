@@ -40,6 +40,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Enable corepack so pnpm + yarn are available on demand
+# (dao-dao-ui is pnpm/turborepo; website/ is yarn/Nuxt 3).
+RUN corepack enable
+
 # Install delta
 RUN ARCH=$(dpkg --print-architecture) \
     && wget -q "https://github.com/dandavison/delta/releases/download/0.18.2/git-delta_0.18.2_${ARCH}.deb" \
@@ -50,6 +54,46 @@ RUN ARCH=$(dpkg --print-architecture) \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
     | bash -s -- --to /usr/local/bin
 
+# Install Go (pinned). Required for Cosmos SDK / Juno chain (`make build`,
+# `make proto-gen`, `make ictest-*`), polytone simtests, and the
+# osmosis-test-tube build script used by `cargo test --features test-tube`.
+ARG GO_VERSION=1.22.10
+RUN ARCH=$(dpkg --print-architecture) \
+    && wget -q "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -O /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz
+
+# Install Docker CLI. The container uses the host's docker daemon via a
+# bind-mounted /var/run/docker.sock; the entrypoint reconciles the in-image
+# `docker` group GID with the host socket's GID at startup.
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install protoc (Cosmos SDK proto regeneration)
+ARG PROTOC_VERSION=27.3
+RUN ARCH=$(dpkg --print-architecture); [ "$ARCH" = "amd64" ] && PARCH=x86_64 || PARCH=aarch_64; \
+    wget -q "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-${PARCH}.zip" -O /tmp/protoc.zip \
+    && unzip -q /tmp/protoc.zip -d /usr/local \
+    && rm /tmp/protoc.zip
+
+# Install buf (proto linting + code-gen front-end used by Cosmos SDK)
+RUN curl -sSL "https://github.com/bufbuild/buf/releases/latest/download/buf-$(uname -s)-$(uname -m)" -o /usr/local/bin/buf \
+    && chmod +x /usr/local/bin/buf
+
+# Install libwasmvm (CosmWasm VM shared library) — required by
+# `cargo test --features test-tube` in dao-contracts. Pin matches what the
+# dao-contracts CI workflow checks out.
+ARG WASMVM_VERSION=v1.5.2
+RUN ARCH=$(dpkg --print-architecture); [ "$ARCH" = "amd64" ] && WASMARCH=x86_64 || WASMARCH=aarch64; \
+    wget -q "https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm.${WASMARCH}.so" -O "/usr/lib/libwasmvm.${WASMARCH}.so" \
+    && ldconfig
+
 # Set up non-root user and directories
 # Ubuntu 24.04 ships with a default 'ubuntu' user/group at UID/GID 1000;
 # remove it first so we can reclaim that ID for our 'node' user.
@@ -58,6 +102,8 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && groupdel ubuntu 2>/dev/null || true \
     && groupadd --gid 1000 $USERNAME \
     && useradd --uid 1000 --gid 1000 -m -s /bin/zsh $USERNAME \
+    && groupadd -f docker \
+    && usermod -aG docker $USERNAME \
     && mkdir -p /usr/local/share/npm-global /workspace /home/node/.claude /commandhistory \
     && touch /commandhistory/.bash_history \
     && chown -R $USERNAME:$USERNAME /usr/local/share/npm-global /workspace /home/node/.claude /commandhistory
@@ -79,6 +125,10 @@ ENV PROMPT_COMMAND='history -a'
 # Make python3 available as python
 ENV PATH="/home/node/.local/bin:$PATH"
 
+# Go toolchain paths (Go itself installed in the system layer above)
+ENV GOPATH=/home/node/go
+ENV PATH=$PATH:/usr/local/go/bin:/home/node/go/bin
+
 # Install Rust and WebAssembly toolchain
 ENV CARGO_HOME=/home/node/.cargo
 ENV RUSTUP_HOME=/home/node/.rustup
@@ -95,6 +145,9 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 
 # Install qmd
 RUN npm install -g @tobilu/qmd
+
+# Install wrangler (Cloudflare Workers CLI — used by indexer-proxy/)
+RUN npm install -g wrangler
 
 # Install zsh configuration
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.0/zsh-in-docker.sh)" -- \
