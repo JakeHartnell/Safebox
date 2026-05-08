@@ -54,6 +54,9 @@ RUN ARCH=$(dpkg --print-architecture) \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
     | bash -s -- --to /usr/local/bin
 
+# Install mise (polyglot tool/version manager — https://github.com/jdx/mise)
+RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
+
 # Install Go (pinned). Required for Cosmos SDK / Juno chain (`make build`,
 # `make proto-gen`, `make ictest-*`), polytone simtests, and the
 # osmosis-test-tube build script used by `cargo test --features test-tube`.
@@ -157,6 +160,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
     -a "source /usr/share/doc/fzf/examples/completion.zsh" \
     -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
+    -a 'eval "$(mise activate zsh)"' \
     -x
 
 # Install Claude Code via native installer (auto-updates)
