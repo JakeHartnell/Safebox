@@ -4,6 +4,23 @@ set -euo pipefail
 # Resolve the directory containing this script (follows symlinks)
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# Auto-load secrets/env (GH_TOKEN, GH_USER, etc.) from a fixed location so
+# `safe-claude` works without the user having to export vars in their shell rc.
+# Honors XDG_CONFIG_HOME, falls back to ~/.config/safe-claude/.env.
+SAFE_CLAUDE_ENV="${SAFE_CLAUDE_ENV:-${XDG_CONFIG_HOME:-$HOME/.config}/safe-claude/.env}"
+if [[ -f "$SAFE_CLAUDE_ENV" ]]; then
+    # Refuse group/world-accessible secrets files — these typically contain tokens.
+    SAFE_CLAUDE_ENV_MODE="$(stat -c '%a' "$SAFE_CLAUDE_ENV" 2>/dev/null || stat -f '%Lp' "$SAFE_CLAUDE_ENV" 2>/dev/null || echo "")"
+    if [[ -n "$SAFE_CLAUDE_ENV_MODE" && "${SAFE_CLAUDE_ENV_MODE: -2}" != "00" ]]; then
+        echo "safe-claude: $SAFE_CLAUDE_ENV has mode $SAFE_CLAUDE_ENV_MODE — run 'chmod 600 $SAFE_CLAUDE_ENV'" >&2
+        exit 1
+    fi
+    set -a
+    # shellcheck disable=SC1090
+    source "$SAFE_CLAUDE_ENV"
+    set +a
+fi
+
 IMAGE_NAME="safe-claude:latest"
 REBUILD=false
 EXTRA_MOUNTS=()
@@ -38,6 +55,12 @@ while [[ $# -gt 0 ]]; do
             echo "  --mount SRC[:DEST]   Mount an extra host path into the container."
             echo "                       If DEST is omitted, SRC is used as the destination."
             echo "                       May be repeated for multiple mounts."
+            echo ""
+            echo "Env file:"
+            echo "  Variables in \$XDG_CONFIG_HOME/safe-claude/.env (default"
+            echo "  ~/.config/safe-claude/.env) are auto-loaded. Use it for GH_TOKEN,"
+            echo "  GH_USER, etc. Override the path with SAFE_CLAUDE_ENV."
+            echo "  The file must be chmod 600."
             exit 0
             ;;
         *)

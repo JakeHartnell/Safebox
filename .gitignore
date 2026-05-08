@@ -1,1 +1,7 @@
 .DS_Store
+
+# Local env files — secrets belong in ~/.config/safe-claude/env, but ignore
+# any stray .env in the repo dir as a safety net.
+.env
+.env.local
+

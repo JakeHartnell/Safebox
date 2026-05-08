@@ -58,6 +58,19 @@ To override for a single run, set the standard Git environment variables:
 GIT_AUTHOR_NAME="Other Name" GIT_AUTHOR_EMAIL="other@example.com" safe-claude
 ```
 
+### GitHub credentials (and other secrets)
+
+If `~/.config/safe-claude/.env` exists, SafeClaude auto-loads it before launching the container. Copy `.env.example` to give the agent its own GitHub identity:
+
+```bash
+mkdir -p ~/.config/safe-claude
+cp .env.example ~/.config/safe-claude/.env
+chmod 600 ~/.config/safe-claude/.env
+$EDITOR ~/.config/safe-claude/.env   # fill in GH_USER + GH_TOKEN
+```
+
+Then just `safe-claude`. Inside the container, `gh` picks up the token automatically and `git push` over HTTPS works via a credential helper wired up by `entrypoint.sh`. SafeClaude refuses to load the file if it isn't `chmod 600`. Override the path with `SAFE_CLAUDE_ENV=/some/other/path`.
+
 ---
 
 ## What's sandboxed
