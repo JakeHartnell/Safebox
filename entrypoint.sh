@@ -43,7 +43,7 @@ fi
 # up GH_TOKEN / GITHUB_TOKEN from the environment automatically — no login
 # step needed for it.
 if [[ -n "${GH_TOKEN:-}" || -n "${GITHUB_TOKEN:-}" ]]; then
-    GH_USER="${GH_USER:-juno-ai}"
+    GH_USER="${GH_USER:-x-access-token}"
     # The credential helper is a shell function; it reads the token from the
     # environment at invocation time so we don't bake the secret into the
     # config file on disk.
