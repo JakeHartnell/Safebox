@@ -44,6 +44,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 # (dao-dao-ui is pnpm/turborepo; website/ is yarn/Nuxt 3).
 RUN corepack enable
 
+# Install Playwright system dependencies for vitest browser mode
+# (https://vitest.dev/guide/browser/). Browser binaries are downloaded
+# to PLAYWRIGHT_BROWSERS_PATH in the user layer below.
+RUN npm install -g playwright \
+    && npx --yes playwright install-deps \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install delta
 RUN ARCH=$(dpkg --print-architecture) \
     && wget -q "https://github.com/dandavison/delta/releases/download/0.18.2/git-delta_0.18.2_${ARCH}.deb" \
@@ -125,6 +133,21 @@ ENV SHELL=/bin/zsh
 ENV HISTFILE=/commandhistory/.bash_history
 ENV PROMPT_COMMAND='history -a'
 
+# pnpm: resolve platform-optional native deps (rollup, esbuild, swc, lightningcss)
+# for both linux + darwin and arm64 + x64. Without this, a `pnpm install` run
+# inside the container against a lockfile generated on macOS won't fetch
+# `@rollup/rollup-linux-arm64-gnu` etc. and vitest/vite crash on import.
+# https://pnpm.io/settings#supportedarchitectures
+RUN printf '%s\n' \
+    'supportedArchitectures[os][]=linux' \
+    'supportedArchitectures[os][]=darwin' \
+    'supportedArchitectures[cpu][]=arm64' \
+    'supportedArchitectures[cpu][]=x64' \
+    'supportedArchitectures[libc][]=glibc' \
+    'supportedArchitectures[libc][]=musl' \
+    > /home/node/.npmrc \
+    && chown node:node /home/node/.npmrc
+
 # Make python3 available as python
 ENV PATH="/home/node/.local/bin:$PATH"
 
@@ -151,6 +174,12 @@ RUN npm install -g @tobilu/qmd
 
 # Install wrangler (Cloudflare Workers CLI — used by indexer-proxy/)
 RUN npm install -g wrangler
+
+# Download Playwright browsers for vitest browser mode + UI testing.
+# System deps installed in the system layer above; this fetches the
+# Chromium/Firefox/WebKit binaries into a shared cache dir.
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
+RUN playwright install chromium firefox webkit
 
 # Install zsh configuration
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.0/zsh-in-docker.sh)" -- \
