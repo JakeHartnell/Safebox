@@ -199,8 +199,31 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
     || npm install -g @anthropic-ai/claude-code@${CLAUDE_VERSION}
 
 # Install GSD (get-shit-done) globally for Claude Code
-ENV CLAUDE_CONFIG_DIR=/home/node/.claude
-RUN npx get-shit-done-cc@latest --claude --global
+# ENV CLAUDE_CONFIG_DIR=/home/node/.claude
+# RUN npx get-shit-done-cc@latest --claude --global
+
+# Install tau (https://hiretau.ai) and the tau-memory skill for claude-code.
+# Auth label + password are passed at build time via BuildKit secrets:
+#   docker build --secret id=tau_label,src=... --secret id=tau_password,src=...
+# Secrets are mounted only for the duration of this RUN — they never land in
+# image layers or `docker history`. The install flow exchanges them for a
+# stored token. Skip the step if either secret is missing/empty so the image
+# still builds without credentials. TAU_API_URL is not sensitive and stays
+# as an ARG.
+ARG TAU_API_URL=https://tau.wavs.xyz
+ENV PATH=$PATH:/home/node/.tau/bin
+RUN --mount=type=secret,id=tau_label,uid=1000 \
+    --mount=type=secret,id=tau_password,uid=1000 \
+    if [ -s /run/secrets/tau_label ] && [ -s /run/secrets/tau_password ]; then \
+        export TAU_INSTALL_AUTH=1 \
+        && export TAU_AUTH_LABEL="$(cat /run/secrets/tau_label)" \
+        && export TAU_PASSWORD="$(cat /run/secrets/tau_password)" \
+        && export TAU_API_URL="$TAU_API_URL" \
+        && curl -fsSL https://hiretau.ai/cli/install.sh | bash \
+        && /home/node/.tau/bin/tau skill install tau-memory --agent claude-code; \
+    else \
+        echo "Skipping tau install: tau_label and tau_password secrets not provided"; \
+    fi
 
 VOLUME /commandhistory
 

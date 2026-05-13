@@ -149,6 +149,18 @@ Different projects need different toolchains — the Dockerfile is yours to exte
 docker build --build-arg CLAUDE_VERSION=1.2.3 -t safe-claude:latest ~/safe-claude
 ```
 
+### Enable tau
+
+[tau](https://hiretau.ai) is installed into the image when credentials are present; otherwise the layer is skipped. Add to `~/.config/safe-claude/.env`:
+
+```bash
+TAU_AUTH_LABEL=your-label
+TAU_PASSWORD=your-password
+# TAU_API_URL=https://tau.wavs.xyz  # optional, defaults to this
+```
+
+Then `safe-claude --rebuild`. The script writes the credentials to `chmod 600` tempfiles and passes them to `docker build` as [BuildKit secrets](https://docs.docker.com/build/building/secrets/) — they're mounted into the install step only, then unlinked. They never land in image layers or `docker history`. The installer exchanges them for a stored token, and `tau skill install tau-memory --agent claude-code` wires the skill in.
+
 ### Included tools
 
 The default image ships with a broad set of tools:
@@ -160,6 +172,7 @@ The default image ships with a broad set of tools:
 - **[just](https://github.com/casey/just)** — command runner
 - **[qmd](https://github.com/tobi/qmd)** — local search engine for docs and notes
 - **[GSD](https://github.com/gsd-build/get-shit-done)** — spec-driven development system for Claude Code
+- **[tau](https://hiretau.ai)** — installed only when credentials are provided (see below)
 - **General:** git, gh, ripgrep, fd, fzf, jq, delta, zsh
 
 ---

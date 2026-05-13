@@ -114,7 +114,44 @@ done
 # Build image if it doesn't exist or --rebuild was requested
 if $REBUILD || ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
     echo "Building $IMAGE_NAME..."
-    docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+    BUILD_FLAGS=()
+    BUILD_TMP_FILES=()
+    cleanup_build_tmp() {
+        for f in "${BUILD_TMP_FILES[@]+"${BUILD_TMP_FILES[@]}"}"; do
+            rm -f "$f"
+        done
+    }
+    trap cleanup_build_tmp EXIT INT TERM HUP
+
+    # Forward tau auth credentials as BuildKit secrets if present. The
+    # Dockerfile skips the tau install layer when either secret is missing.
+    # Secrets are mounted only for the duration of their RUN step — they
+    # don't land in image layers or `docker history`.
+    if [[ -n "${TAU_AUTH_LABEL:-}" ]]; then
+        tau_label_file=$(mktemp /tmp/tau-label-XXXXXX)
+        chmod 600 "$tau_label_file"
+        printf '%s' "$TAU_AUTH_LABEL" > "$tau_label_file"
+        BUILD_TMP_FILES+=("$tau_label_file")
+        BUILD_FLAGS+=(--secret "id=tau_label,src=$tau_label_file")
+    fi
+    if [[ -n "${TAU_PASSWORD:-}" ]]; then
+        tau_password_file=$(mktemp /tmp/tau-password-XXXXXX)
+        chmod 600 "$tau_password_file"
+        printf '%s' "$TAU_PASSWORD" > "$tau_password_file"
+        BUILD_TMP_FILES+=("$tau_password_file")
+        BUILD_FLAGS+=(--secret "id=tau_password,src=$tau_password_file")
+    fi
+    # TAU_API_URL is not sensitive; pass as a build arg.
+    if [[ -n "${TAU_API_URL:-}" ]]; then
+        BUILD_FLAGS+=(--build-arg "TAU_API_URL=$TAU_API_URL")
+    fi
+
+    # BuildKit is the default on Docker 23+, but force it on so --secret works
+    # on older daemons too.
+    DOCKER_BUILDKIT=1 docker build "${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"}" -t "$IMAGE_NAME" "$SCRIPT_DIR"
+
+    cleanup_build_tmp
+    trap - EXIT INT TERM HUP
 fi
 
 # Forward git identity into the container.
