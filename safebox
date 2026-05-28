@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve the directory containing this script (follows symlinks so the
+# installed `~/.local/bin/safebox` symlink still finds lib/, Dockerfile,
+# entrypoint.sh next to the source).
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
+HARNESS="${1:-}"
+case "$HARNESS" in
+    claude|codex|pi)
+        shift
+        ;;
+    --rebuild)
+        # Standalone image rebuild — the image is shared across all harnesses,
+        # so no harness needs to be named.
+        ensure_image "true" "$SCRIPT_DIR"
+        exit 0
+        ;;
+    --help|-h|"")
+        print_usage
+        exit 0
+        ;;
+    *)
+        err "unknown harness: $HARNESS"
+        err "Run 'safebox --help' for usage."
+        exit 1
+        ;;
+esac
+
+REBUILD=false
+EXTRA_MOUNTS=()
+PASSTHROUGH=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --rebuild)
+            REBUILD=true
+            shift
+            ;;
+        --mount)
+            [[ $# -ge 2 ]] || die "--mount requires an argument"
+            EXTRA_MOUNTS+=("$2")
+            shift 2
+            ;;
+        --mount=*)
+            EXTRA_MOUNTS+=("${1#--mount=}")
+            shift
+            ;;
+        --)
+            shift
+            PASSTHROUGH=("$@")
+            break
+            ;;
+        --help|-h)
+            print_usage
+            exit 0
+            ;;
+        *)
+            err "unknown flag: $1"
+            err "Run 'safebox --help' for usage."
+            exit 1
+            ;;
+    esac
+done
+
+load_env
+ensure_image "$REBUILD" "$SCRIPT_DIR"
+legacy_image_hint
+
+# Collect per-source flag arrays from helpers. Each helper emits one flag per
+# line, so mapfile gives us a clean array regardless of whether the helper
+# emitted nothing.
+mapfile -t EXTRA_MOUNT_FLAGS < <(resolve_mounts "${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"}")
+mapfile -t GIT_ENV_FLAGS < <(git_env_flags)
+mapfile -t GH_ENV_FLAGS < <(gh_env_flags)
+mapfile -t DOCKER_FLAGS < <(docker_socket_flags)
+mapfile -t PROVIDER_ENV_FLAGS < <(provider_api_env_flags)
+
+# Per-harness wiring: which host config dir to mount, which command to run.
+HARNESS_MOUNTS=()
+HARNESS_CMD=()
+CLAUDE_JSON_TMP=""
+
+case "$HARNESS" in
+    claude)
+        # Claude bakes absolute host paths into ~/.claude.json and the file
+        # is rewritten atomically on every config change. Docker's macOS
+        # filesystem layer can corrupt atomic renames against bind-mounted
+        # host files, so we copy to a temp file, mount that, and validate
+        # the result on exit before copying it back.
+        mkdir -p "$HOME/.claude"
+        touch "$HOME/.claude.json"
+        CLAUDE_JSON_TMP="$(mktemp /tmp/claude-json-XXXXXX)"
+        cp "$HOME/.claude.json" "$CLAUDE_JSON_TMP"
+        HARNESS_MOUNTS=(
+            -v "$HOME/.claude:/home/node/.claude"
+            -v "$CLAUDE_JSON_TMP:/home/node/.claude.json"
+        )
+        HARNESS_CMD=(claude --dangerously-skip-permissions)
+        ;;
+    codex)
+        mkdir -p "$HOME/.codex"
+        HARNESS_MOUNTS=(-v "$HOME/.codex:/home/node/.codex")
+        # Verify against `codex --help` in the built image if this stops
+        # working — OpenAI has renamed this flag twice already.
+        HARNESS_CMD=(codex --dangerously-bypass-approvals-and-sandbox)
+        ;;
+    pi)
+        mkdir -p "$HOME/.pi"
+        HARNESS_MOUNTS=(-v "$HOME/.pi:/home/node/.pi")
+        HARNESS_CMD=(pi)
+        ;;
+esac
+
+# Persist qmd's cache (GGUF model weights + SQLite index — multi-GB) across
+# container rebuilds. Without this, every fresh container re-downloads the
+# embedding/reranker/expander models and re-embeds every collection.
+mkdir -p "$HOME/.cache/qmd"
+
+CONTAINER_NAME="safebox-${HARNESS}-$$"
+cleanup() {
+    docker stop "$CONTAINER_NAME" &>/dev/null || true
+    [[ -n "$CLAUDE_JSON_TMP" ]] && rm -f "$CLAUDE_JSON_TMP"
+}
+trap cleanup EXIT INT TERM HUP
+
+docker run --rm -it \
+    --name "$CONTAINER_NAME" \
+    -v "$PWD:/workspace" \
+    -v "$HOME/.cache/qmd:/home/node/.cache/qmd" \
+    "${HARNESS_MOUNTS[@]}" \
+    "${EXTRA_MOUNT_FLAGS[@]+"${EXTRA_MOUNT_FLAGS[@]}"}" \
+    "${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"}" \
+    "${GH_ENV_FLAGS[@]+"${GH_ENV_FLAGS[@]}"}" \
+    "${PROVIDER_ENV_FLAGS[@]+"${PROVIDER_ENV_FLAGS[@]}"}" \
+    "${DOCKER_FLAGS[@]+"${DOCKER_FLAGS[@]}"}" \
+    -e "HOST_HOME=$HOME" \
+    -w /workspace \
+    "$IMAGE_NAME" \
+    "${HARNESS_CMD[@]}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
+EXIT_CODE=$?
+
+# For Claude, validate-then-copy the rewritten config back to the host so
+# auth/setting updates persist without risking a corrupted host file.
+if [[ "$HARNESS" == "claude" && -n "$CLAUDE_JSON_TMP" ]]; then
+    if jq empty "$CLAUDE_JSON_TMP" 2>/dev/null; then
+        cp "$CLAUDE_JSON_TMP" "$HOME/.claude.json"
+    else
+        err "container wrote invalid JSON to .claude.json — host file left unchanged."
+    fi
+fi
+
+exit $EXIT_CODE

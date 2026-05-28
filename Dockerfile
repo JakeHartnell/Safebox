@@ -131,7 +131,7 @@ WORKDIR /workspace
 
 # Git identity is set at runtime via GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL,
 # GIT_COMMITTER_NAME, and GIT_COMMITTER_EMAIL environment variables
-# passed by safe-claude.sh from the host's git config.
+# passed by the safebox dispatcher from the host's git config.
 
 # Environment setup
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
@@ -199,21 +199,34 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a 'eval "$(mise activate zsh)"' \
     -x
 
+# --- Agent harnesses ---------------------------------------------------------
+# Each harness gets its own RUN so adding a new one (or bumping versions)
+# invalidates only that layer and the ones below it. Ordered most-stable to
+# most-volatile: Claude first (most users), Codex second, Pi last.
+
 # Install Claude Code via native installer (auto-updates)
 # Falls back to npm install if the native installer is rate-limited
 ARG CLAUDE_VERSION=latest
 RUN curl -fsSL https://claude.ai/install.sh | bash \
     || npm install -g @anthropic-ai/claude-code@${CLAUDE_VERSION}
 
-# Install GSD (get-shit-done) globally for Claude Code
-ENV CLAUDE_CONFIG_DIR=/home/node/.claude
-RUN npx get-shit-done-cc@latest --claude --global
+# Install OpenAI Codex CLI. CODEX_HOME tells codex to use the bind-mounted
+# ~/.codex dir inside the container, so sessions and auth persist across runs.
+ARG CODEX_VERSION=latest
+ENV CODEX_HOME=/home/node/.codex
+RUN npm install -g @openai/codex@${CODEX_VERSION}
+
+# Install pi.dev coding agent. `--ignore-scripts` is the install recipe
+# documented by upstream — keep it. Pi auto-discovers ~/.pi/agent/ and the
+# AGENTS.md / SYSTEM.md chain from CWD upward; no env var needed.
+ARG PI_VERSION=latest
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 
 VOLUME /commandhistory
 
 # Entrypoint runs as root to mirror the host's home path inside the container
 # (so absolute paths in shared ~/.claude config resolve), then drops to node.
 USER root
-COPY entrypoint.sh /usr/local/bin/safe-claude-entrypoint.sh
-RUN chmod +x /usr/local/bin/safe-claude-entrypoint.sh
-ENTRYPOINT ["/usr/local/bin/safe-claude-entrypoint.sh"]
+COPY entrypoint.sh /usr/local/bin/safebox-entrypoint.sh
+RUN chmod +x /usr/local/bin/safebox-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/safebox-entrypoint.sh"]
