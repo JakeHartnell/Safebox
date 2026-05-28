@@ -65,6 +65,13 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
 # Install mise (polyglot tool/version manager — https://github.com/jdx/mise)
 RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
 
+# Install uv (fast Python package/project manager — https://github.com/astral-sh/uv).
+# Installs uv + uvx into /usr/local/bin so it's available system-wide without
+# touching $HOME. INSTALLER_NO_MODIFY_PATH skips the shell-rc edits the
+# installer would otherwise make for an interactive user install.
+RUN curl -LsSf https://astral.sh/uv/install.sh \
+    | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
+
 # Install Go (pinned). Required for Cosmos SDK / Juno chain (`make build`,
 # `make proto-gen`, `make ictest-*`), polytone simtests, and the
 # osmosis-test-tube build script used by `cargo test --features test-tube`.
