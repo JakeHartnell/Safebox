@@ -7,9 +7,9 @@
 # generic plumbing (env loading, image build, git/GH/docker-socket forwarding).
 
 IMAGE_NAME="safebox:latest"
-LEGACY_IMAGE_NAME="safe-claude:latest"
+LEGACY_IMAGE_NAME="safebox:latest"
 CONFIG_DIR_DEFAULT="${XDG_CONFIG_HOME:-$HOME/.config}/safebox"
-LEGACY_CONFIG_DIR_DEFAULT="${XDG_CONFIG_HOME:-$HOME/.config}/safe-claude"
+LEGACY_CONFIG_DIR_DEFAULT="${XDG_CONFIG_HOME:-$HOME/.config}/safebox"
 
 err() {
     echo "safebox: $*" >&2
@@ -73,7 +73,7 @@ _load_env_file() {
 }
 
 # Load ~/.config/safebox/.env if present. Falls back to the legacy
-# ~/.config/safe-claude/.env path with a one-line hint so the user knows
+# ~/.config/safebox/.env path with a one-line hint so the user knows
 # to migrate.
 load_env() {
     local config_dir="${SAFEBOX_CONFIG_DIR:-$CONFIG_DIR_DEFAULT}"
