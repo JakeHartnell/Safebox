@@ -72,13 +72,19 @@ ensure_image "$REBUILD" "$SCRIPT_DIR"
 legacy_image_hint
 
 # Collect per-source flag arrays from helpers. Each helper emits one flag per
-# line, so mapfile gives us a clean array regardless of whether the helper
-# emitted nothing.
-mapfile -t EXTRA_MOUNT_FLAGS < <(resolve_mounts "${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"}")
-mapfile -t GIT_ENV_FLAGS < <(git_env_flags)
-mapfile -t GH_ENV_FLAGS < <(gh_env_flags)
-mapfile -t DOCKER_FLAGS < <(docker_socket_flags)
-mapfile -t PROVIDER_ENV_FLAGS < <(provider_api_env_flags)
+# line; we read them into arrays with a while loop instead of `mapfile` so the
+# script runs on the stock macOS bash 3.2 (mapfile is bash 4+).
+EXTRA_MOUNT_FLAGS=()
+while IFS= read -r __line; do EXTRA_MOUNT_FLAGS+=("$__line"); done < <(resolve_mounts "${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"}")
+GIT_ENV_FLAGS=()
+while IFS= read -r __line; do GIT_ENV_FLAGS+=("$__line"); done < <(git_env_flags)
+GH_ENV_FLAGS=()
+while IFS= read -r __line; do GH_ENV_FLAGS+=("$__line"); done < <(gh_env_flags)
+DOCKER_FLAGS=()
+while IFS= read -r __line; do DOCKER_FLAGS+=("$__line"); done < <(docker_socket_flags)
+PROVIDER_ENV_FLAGS=()
+while IFS= read -r __line; do PROVIDER_ENV_FLAGS+=("$__line"); done < <(provider_api_env_flags)
+unset __line
 
 # Per-harness wiring: which host config dir to mount, which command to run.
 HARNESS_MOUNTS=()

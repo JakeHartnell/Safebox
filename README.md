@@ -24,26 +24,34 @@ The current directory is mounted as `/workspace` inside the container — change
 
 ## Install
 
+**Prerequisites:** Docker (Docker Desktop on macOS, Docker Engine on Linux), git, and bash.
+
 ```bash
 git clone https://github.com/JakeHartnell/safebox.git ~/safebox
 
-# Symlink into your PATH so you can call it from anywhere
+# Symlink the script (not the directory) into your PATH
+mkdir -p ~/.local/bin
 ln -s ~/safebox/safebox ~/.local/bin/safebox
-# (make sure ~/.local/bin is in your PATH)
 ```
 
-That's it. The Docker image (`safebox:latest`) builds automatically on first run.
+If `~/.local/bin` isn't already in your `PATH`, add it to your shell's rc file:
 
-### Migrating from `safe-claude`
+```bash
+# zsh (default on macOS)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 
-`safebox` is the renamed successor of `safe-claude`. If you've been using the old tool:
+# bash (default on most Linux distros)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
 
-- The CLI was `safe-claude` → it's now `safebox claude` (or `codex` / `pi`).
-- The env file was `~/.config/safe-claude/.env` → move it to `~/.config/safebox/.env`. On the first run, if only the legacy path exists, `safebox` reads it and prints a one-line nudge.
-- The image was `safe-claude:latest` → it's now `safebox:latest`. The old image is still on disk after the rename; `docker rmi safe-claude:latest` reclaims the space.
-- `~/.claude` and `~/.claude.json` are owned by Claude Code itself and are **not** moved. Your sessions and config carry over untouched.
+Verify it works:
 
----
+```bash
+which safebox     # → /Users/you/.local/bin/safebox (or /home/you/...)
+safebox --help
+```
+
+The Docker image (`safebox:latest`) builds automatically on first run.
 
 ## Usage
 
